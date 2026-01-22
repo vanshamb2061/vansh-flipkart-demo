@@ -143,194 +143,145 @@ Tasks progress through the following states:
 
 ## Class Diagram
 
-```mermaid
-classDiagram
-    class DistributedTaskScheduler {
-        -TaskQueue queue
-        -TaskRegistry taskRegistry
-        -WorkerRegistry workerRegistry
-        -SchedulerService service
-        -long currentTime
-        +registerWorker(nodeId, cpu, memory, speed)
-        +submitTask(taskId, cpu, memory, time, priority)
-        +cancelTask(taskId)
-        +simulateWorkerFailure(nodeId)
-        +autoScale()
-        +waitFor(seconds)
-    }
-
-    class SchedulerService {
-        -TaskQueue queue
-        -TaskRegistry taskRegistry
-        -WorkerRegistry workerRegistry
-        +submitTask(task, currentTime)
-        +tryAssignTask(task, currentTime)
-        +processCompletedTasks(currentTime)
-        +handleWorkerFailure(workerId, currentTime)
-        +cancelTask(taskId, currentTime)
-        +autoScale(currentTime)
-    }
-
-    class TaskQueue {
-        -Queue~Task~ highPriorityQueue
-        -Queue~Task~ mediumPriorityQueue
-        -Queue~Task~ lowPriorityQueue
-        -ReentrantLock lock
-        +enqueue(task)
-        +dequeue()
-        +remove(task)
-        +size()
-        +isEmpty()
-    }
-
-    class TaskRegistry {
-        -Map~String,Task~ tasks
-        +register(task)
-        +getTask(taskId)
-        +getAllTasks()
-    }
-
-    class WorkerRegistry {
-        -Map~String,WorkerNode~ workers
-        -AtomicInteger autoScaleCounter
-        +register(worker)
-        +getWorker(nodeId)
-        +getActiveWorkers()
-        +markWorkerFailed(nodeId)
-        +autoScaleWorker()
-    }
-
-    class Task {
-        -String taskId
-        -int cpuRequirement
-        -int memoryRequirement
-        -int executionTime
-        -Priority priority
-        -TaskStatus status
-        -String assignedTo
-        -long startTime
-        -int retryCount
-        +isExecutionComplete(currentTime)
-        +resetForReassignment()
-        +incrementRetryCount()
-    }
-
-    class WorkerNode {
-        -String nodeId
-        -int totalCpu
-        -int totalMemory
-        -int processingSpeed
-        -WorkerStatus status
-        -int usedCpu
-        -int usedMemory
-        -Map~String,Task~ runningTasks
-        +canAccommodate(cpu, memory)
-        +allocateResources(task)
-        +releaseResources(task)
-        +releaseAllResources()
-    }
-
-    class Priority {
-        <<enumeration>>
-        HIGH(3)
-        MEDIUM(2)
-        LOW(1)
-    }
-
-    class TaskStatus {
-        <<enumeration>>
-        QUEUED
-        ASSIGNED
-        COMPLETED
-        CANCELLED
-        FAILED
-    }
-
-    class WorkerStatus {
-        <<enumeration>>
-        ACTIVE
-        INACTIVE
-    }
-
-    DistributedTaskScheduler --> SchedulerService
-    DistributedTaskScheduler --> TaskQueue
-    DistributedTaskScheduler --> TaskRegistry
-    DistributedTaskScheduler --> WorkerRegistry
-    
-    SchedulerService --> TaskQueue
-    SchedulerService --> TaskRegistry
-    SchedulerService --> WorkerRegistry
-    
-    Task --> Priority
-    Task --> TaskStatus
-    WorkerNode --> WorkerStatus
-    WorkerNode --> Task
+```
+┌─────────────────────────────────────────────────────────────┐
+│                DistributedTaskScheduler                    │
+│─────────────────────────────────────────────────────────────│
+│ - queue: TaskQueue                                         │
+│ - taskRegistry: TaskRegistry                               │
+│ - workerRegistry: WorkerRegistry                           │
+│ - service: SchedulerService                                │
+│ - currentTime: long                                        │
+│─────────────────────────────────────────────────────────────│
+│ + registerWorker(nodeId, cpu, memory, speed)              │
+│ + submitTask(taskId, cpu, memory, time, priority)         │
+│ + cancelTask(taskId)                                       │
+│ + simulateWorkerFailure(nodeId)                             │
+│ + autoScale()                                              │
+│ + waitFor(seconds)                                         │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  SchedulerService                           │
+│─────────────────────────────────────────────────────────────│
+│ - queue: TaskQueue                                         │
+│ - taskRegistry: TaskRegistry                               │
+│ - workerRegistry: WorkerRegistry                           │
+│─────────────────────────────────────────────────────────────│
+│ + submitTask(task, currentTime)                            │
+│ + tryAssignTask(task, currentTime)                         │
+│ + processCompletedTasks(currentTime)                        │
+│ + handleWorkerFailure(workerId, currentTime)              │
+│ + cancelTask(taskId, currentTime)                          │
+│ + autoScale(currentTime)                                   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   TaskQueue     │  │  TaskRegistry   │  │ WorkerRegistry  │
+│─────────────────│  │─────────────────│  │─────────────────│
+│ - highPriority  │  │ - tasks: Map    │  │ - workers: Map  │
+│ - mediumPriority│  │─────────────────│  │ - autoScaleCtr  │
+│ - lowPriority   │  │ + register(task)│  │─────────────────│
+│ - lock: Reentrant│ │ + getTask(id)   │  │ + register(worker)│
+│─────────────────│  │ + getAllTasks() │  │ + getWorker(id)  │
+│ + enqueue(task) │  └─────────────────┘  │ + getActive()    │
+│ + dequeue()     │                       │ + markFailed(id)│
+│ + remove(task)  │                       │ + autoScale()    │
+│ + size()        │                       └─────────────────┘
+│ + isEmpty()     │
+└─────────────────┘
+                              │
+                              ▼
+┌─────────────────┐  ┌─────────────────┐
+│      Task       │  │   WorkerNode    │
+│─────────────────│  │─────────────────│
+│ - taskId: String│  │ - nodeId: String│
+│ - cpuReq: int   │  │ - totalCpu: int │
+│ - memReq: int   │  │ - totalMem: int │
+│ - execTime: int│  │ - speed: int    │
+│ - priority: enum│  │ - status: enum  │
+│ - status: enum  │  │ - usedCpu: int  │
+│ - assignedTo: S │  │ - usedMem: int  │
+│ - startTime: lng│  │ - runningTasks  │
+│ - retryCount: i │  │─────────────────│
+│─────────────────│  │ + canAccommodate│
+│ + isExecutionC │  │ + allocate(task)│
+│ + resetForReass │  │ + release(task) │
+│ + incrementRetry│  │ + releaseAll()  │
+└─────────────────┘  └─────────────────┘
 ```
 
 ## Sequence Diagrams
 
 ### Task Submission and Assignment
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Scheduler as DistributedTaskScheduler
-    participant Service as SchedulerService
-    participant Registry as TaskRegistry
-    participant Queue as TaskQueue
-    participant Worker as WorkerNode
 
-    Client->>Scheduler: submitTask(task)
-    Scheduler->>Service: submitTask(task, currentTime)
-    Service->>Registry: register(task)
-    Service->>Service: tryAssignTask(task, currentTime)
-    Service->>Service: findFastestWorker(task, workers)
-    
-    alt Worker Available
-        Service->>Worker: allocateResources(task)
-        Worker-->>Service: true
-        Service->>Task: setStatus(ASSIGNED)
-        Service->>Task: setAssignedTo(workerId)
-        Service->>Task: setStartTime(currentTime)
-    else No Worker Available
-        Service->>Queue: enqueue(task)
-        Service->>Task: setStatus(QUEUED)
-    end
-    
-    Service-->>Scheduler: assignment result
-    Scheduler-->>Client: confirmation
+```
+Client    DistributedTaskScheduler    SchedulerService    TaskRegistry    TaskQueue    WorkerNode
+  │                │                        │                 │              │             │
+  │ submitTask()   │                        │                 │              │             │
+  ├──────────────►│                        │                 │              │             │
+  │                │ submitTask(task, time) │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │                        │ register(task) │              │             │
+  │                │                        ├──────────────►│              │             │
+  │                │                        │                 │              │             │
+  │                │ tryAssignTask()        │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │ findFastestWorker()    │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │                        │                 │              │             │
+  │                │                        │                 │              │             │
+  │                │    WORKER AVAILABLE    │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │ allocateResources()    │                 │              │             │
+  │                ├────────────────────────────────────────────────────────►│             │
+  │                │                        │                 │              │             │
+  │                │ setStatus(ASSIGNED)    │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │ setAssignedTo()        │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │ setStartTime()         │                 │              │             │
+  │                ├──────────────────────►│                 │              │             │
+  │                │                        │                 │              │             │
+  │                │◄───────────────────────│                 │              │             │
+  │◄───────────────│                        │                 │              │             │
 ```
 
 ### Worker Failure and Task Reassignment
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Scheduler as DistributedTaskScheduler
-    participant Service as SchedulerService
-    participant Registry as WorkerRegistry
-    participant Worker as WorkerNode
-    participant Queue as TaskQueue
 
-    Client->>Scheduler: simulateWorkerFailure(workerId)
-    Scheduler->>Service: handleWorkerFailure(workerId, currentTime)
-    Service->>Registry: markWorkerFailed(workerId)
-    Registry->>Worker: setStatus(INACTIVE)
-    Worker->>Worker: releaseAllResources()
-    Worker-->>Registry: affectedTasks
-    
-    loop For Each Affected Task
-        Service->>Task: resetForReassignment()
-        Service->>Task: incrementRetryCount()
-        Service->>Service: tryAssignTask(task, currentTime)
-        
-        alt New Worker Available
-            Service->>Worker: allocateResources(task)
-        else No Worker Available
-            Service->>Queue: enqueue(task)
-        end
-    end
-    
-    Service-->>Scheduler: reassignment results
-    Scheduler-->>Client: failure handled
+```
+Client    DistributedTaskScheduler    SchedulerService    WorkerRegistry    WorkerNode    TaskQueue    Task
+  │                │                        │                 │              │             │        │
+  │ simulateFail() │                        │                 │              │             │        │
+  ├──────────────►│                        │                 │              │             │        │
+  │                │ handleWorkerFailure()  │                 │              │             │        │
+  │                ├──────────────────────►│                 │              │             │        │
+  │                │                        │ markFailed(id)  │              │             │        │
+  │                │                        ├──────────────►│              │             │        │
+  │                │                        │                 │ setStatus()  │             │        │
+  │                │                        │                 ├────────────►│             │        │
+  │                │                        │                 │ releaseAll() │             │        │
+  │                │                        │                 ├────────────►│             │        │
+  │                │                        │◄───────────────│              │             │        │
+  │                │                        │ affectedTasks   │              │             │        │
+  │                │◄───────────────────────│                 │              │             │        │
+  │                │                        │                 │              │             │        │
+  │                │    FOR EACH AFFECTED TASK               │              │             │        │
+  │                ├──────────────────────►│                 │              │             │        │
+  │                │ resetForReassignment()│                 │              │             │        │
+  │                ├─────────────────────────────────────────────────────────────────────────►│
+  │                │ incrementRetryCount() │                 │              │             │        │
+  │                ├─────────────────────────────────────────────────────────────────────────►│
+  │                │ tryAssignTask()        │                 │              │             │        │
+  │                ├──────────────────────►│                 │              │             │        │
+  │                │                        │                 │              │             │        │
+  │                │    NEW WORKER AVAILABLE                 │              │             │        │
+  │                ├──────────────────────────────────────────────────────────────────────►│
+  │                │                        │                 │              │             │        │
+  │                │◄───────────────────────│                 │              │             │        │
+  │◄───────────────│                        │                 │              │             │        │
 ```
 
 ## Complexity Analysis
